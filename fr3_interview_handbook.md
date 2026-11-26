@@ -38,6 +38,8 @@ FR3 是机器人执行平台，Quest 是人的遥操作输入设备，π0.5 是�
 
 2026-11-27。第一小节只追踪手柄平移。已核读源码，算例待完成，未连接设备。
 
+完整步骤见[部署复现教程](tutorial.md)，从 shell 进入源码目录开始。
+
 - 启动入口为 `tools/start_teleop_collection.sh`，其中遥操作进程运行 `teleop.py`，后者构造 `TeleopServer`。
 - `TeleopServer.setup_routes` 中的 `POST /unity` 收到手柄消息后入队。处理循环进入跟踪时保存手柄和机械臂末端的各自起点，再调用 `calc_relative_target` 计算机器人末端目标，最后经 `send_left_arm_waypoint` 向机器人服务提交目标。
 - 在平移启用且未达到位移上限时，目标位置 = 机器人起点 + 缩放系数 ×（手柄当前位置 − 手柄起点）。末端目标是机器人希望到达的位置，实际位置须另外从机器人状态读取。

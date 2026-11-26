@@ -24,9 +24,10 @@ flowchart LR
 
 ## 建议阅读顺序
 
-1. [项目框架与具体场景](architecture.md)：先了解各组件负责什么。
-2. [面试知识点手册](fr3_interview_handbook.md)：持续更新的概念、追问和复述练习。
-3. [离线实验记录](experiments/README.md)：查看实际执行条件、命令与结果。
+1. [项目框架与具体场景](architecture.md)，了解各组件负责什么。
+2. [部署复现教程](tutorial.md)，按终端命令、源码和离线练习逐节操作。
+3. [面试知识点手册](fr3_interview_handbook.md)，回顾概念、面试追问和复述练习。
+4. [离线实验记录](experiments/README.md)，查看实际执行条件、命令与结果。
 
 ## 当前进度与证据
 
