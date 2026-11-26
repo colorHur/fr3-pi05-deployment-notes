@@ -1,5 +1,18 @@
 # FR3 / π0.5 部署复现教程
 
+## 在哪里打开
+
+在源码项目里，文件位于 `docs/fr3_portfolio/tutorial.md`。下列命令可在本机直接复制执行：
+
+```bash
+cd /run/media/hty/NEW/reactive_diffusion_policy
+less docs/fr3_portfolio/tutorial.md
+```
+
+在 `less` 中按 `q` 回到 shell。想用 VS Code 看图和表格，在同一目录运行 `code docs/fr3_portfolio/tutorial.md`，再按 `Ctrl+Shift+V` 打开 Markdown 预览。若整个项目已经在 VS Code 中打开，也可按 `Ctrl+P` 后输入 `docs/fr3_portfolio/tutorial.md`。
+
+GitHub 展示仓库将这份教程放在首页同级的 `tutorial.md`。要运行下面的源码搜索命令，请回到本机的 FR3 源码项目。
+
 每节课从一个可观察的问题开始：找到入口，追踪一个数据变化，先写预测，再离线验证。源码阅读、手算和程序运行分别记录，便于回查结论是怎么来的。
 
 | 顺序 | 练习 | 状态 |
@@ -18,13 +31,12 @@
 ### 1. 用终端进入源码根目录
 
 ```bash
-# 改成你电脑上原项目的源码目录
-cd /path/to/reactive_diffusion_policy
+cd /run/media/hty/NEW/reactive_diffusion_policy
 pwd
 test -f teleop.py && test -f tools/start_teleop_collection.sh && echo "源码目录正确"
 ```
 
-当前工作区路径为 `/run/media/hty/NEW/reactive_diffusion_policy`。检查通过后可运行 `code .` 在 VS Code 打开整个目录。也可以继续用 shell 完成本节。
+应看到两行：当前仓库的绝对路径，以及「源码目录正确」。在其他电脑上，把第一行路径替换成自己的源码目录。检查通过后可运行 `code .` 在 VS Code 打开整个目录。也可以继续用 shell 完成本节。
 
 ### 2. 找到数据从哪里来、最后交给谁
 
@@ -44,6 +56,25 @@ rg -n "post\('/unity'\)|unity2robot_frame|set_start_tcp\(left_tcp|calc_relative_
 | `calc_relative_target(l_pos_from_unity, ...)` | 用当前手柄位姿和两个参考起点计算末端目标 |
 | `send_left_arm_waypoint(left_target)` | 把算好的目标交给发送函数，后者向机器人服务提交请求 |
 
+当前工作区应看到左侧路径的关键行大约在 **245、1418、1428、1462、1502**。搜索结果也可能带有右侧手柄的匹配项，本节跟着 `left` 和 `l_pos_from_unity` 走。版本变化后以函数名和语句为准。
+
+想知道代码如何从「收到消息」走到「计算目标」，分三次读会更容易：
+
+```bash
+# 第一眼：谁写入、谁读取手柄消息？
+rg -n -C 3 'msg_buffer\.(push|peek)' "$src"
+
+# 第二眼：两个起点存到哪里？
+rg -n -A 9 'def set_start_tcp' "$src"
+
+# 第三眼：算好的目标放进哪个请求字段？
+rg -n -B 2 -A 2 "'/move_tcp/left'" "$src"
+```
+
+1. 第一条应看到入口的 `push(mes)` 和处理循环的 `peek()`。前者将手柄消息交给缓冲区，后者读取缓冲区中的消息。看到入口回复 `status: ok`，只能确认该请求已被接收；这里还没有计算目标。
+2. 第二条应看到左臂起点分别保存在 `left_start_real_tcp` 和 `left_start_unity_tcp`。再回看调用处的 `if not self.left_tracking_state`，确认起点在**进入跟踪时**保存。跟踪期间继续移动手柄时，计算仍使用这次跟踪开始时保存的起点。
+3. 第三条应看到请求路径 `/move_tcp/left` 和字段 `target_tcp`。这里若只看到源码，能确认请求如何构造；要判断机器人实际到达了哪里，需要机器人状态。
+
 ### 3. 只读位置计算
 
 ```bash
@@ -51,6 +82,14 @@ rg -n -A 31 'def calc_relative_target' "$src"
 ```
 
 VS Code 中也能按 `Ctrl+Shift+F` 搜索 `def calc_relative_target`。先找 `relative_translation` 和 `target[:3]`，其中 `[:3]` 是位置的 x、y、z。TCP 可以先理解为机器人用于描述夹爪末端的参考点。
+
+| 代码里的名字 | 手算时把它看成什么 |
+| --- | --- |
+| `pos_from_unity[:3]` | 当前手柄位置，已经换到机器人基座坐标系 |
+| `start_unity_tcp[:3]` | 开始跟踪时的手柄位置，使用同一坐标系 |
+| `self.relative_translation_scale` | 将手柄位移换算为机器人目标位移的系数 |
+| `start_real_tcp[:3]` | 开始跟踪时实测的机器人末端位置 |
+| `target[:3]` | 这次算出来的机器人末端目标位置 |
 
 在允许平移且未触发限幅时，先做减法，再乘缩放系数，最后做加法：
 
@@ -97,5 +136,13 @@ PY
 | 报文件不存在或搜不到函数 | 先在当前终端重新设置 `src`，再检查 `test -f "$src"`。文件存在但函数缺失时，用 `git status --short -- "$src"` 和 `git log -1 --oneline` 记录当前工作区版本 |
 | `NameError: name 'TODO' is not defined` | 将三个 `TODO` 全部改成自己的计算表达式 |
 | 数值与预测不一致 | 检查减法顺序、缩放乘在哪一项、最后加的是哪个起点 |
+
+读代码时也可以按信号逐步定位：看到了消息但还找不到目标，查 `peek()` 和跟踪条件；目标位置和预期不同，查坐标转换、两个起点及比例；已经找到 `target_tcp` 请求，下一处边界是机器人服务如何接收它。本节用源码定位这些边界，真机行为留待有对应验证条件时记录。
+
+### 完成检查
+
+- 能在源码里指出哪里接收消息、哪里保存两个起点、哪里算出目标。
+- 能说清从哪个位置减去哪个位置，以及缩放后的位移加到哪里。
+- 能区分「算出目标位置」「向机器人服务提交目标」「机器人实际到达」这三件事。
 
 做完后，用一句话回答面试追问：**为什么进入跟踪时要分别记录手柄起点和机器人起点？** 把预测、实际输出和疑问放进[实验记录](experiments/README.md)的模板。下一节再看机器人状态和相机画面怎样进入录制器。
